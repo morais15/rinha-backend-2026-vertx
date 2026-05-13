@@ -8,7 +8,7 @@ import io.vertx.ext.web.handler.BodyHandler;
 
 public class MainVerticle extends VerticleBase {
 
-  void main() {
+  static void main() {
     Vertx.vertx()
       .deployVerticle(new MainVerticle());
   }

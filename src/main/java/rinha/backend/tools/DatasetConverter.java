@@ -1,4 +1,4 @@
-package rinha.backend.dataset;
+package rinha.backend.tools;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -13,7 +13,15 @@ import java.nio.file.Path;
 import java.util.zip.GZIPInputStream;
 
 public final class DatasetConverter {
+
   private static final int DIMENSIONS = 14;
+
+  static void main() throws IOException {
+    final String input = "references.json.gz";
+    final String output = "references.bin";
+
+    convert(Path.of(input), Path.of(output));
+  }
 
   public static void convert(Path input, Path output) throws IOException {
     try (
@@ -38,14 +46,17 @@ public final class DatasetConverter {
 
         JsonArray vector = obj.getJsonArray("vector");
 
+//        System.out.println(vector);
+
         for (int d = 0; d < DIMENSIONS; d++) {
           out.writeFloat(vector.getFloat(d));
         }
 
-        byte label =
-          (byte) ("fraud".equals(obj.getString("label")) ? 1 : 0);
+        byte label = (byte) ("fraud".equals(obj.getString("label")) ? 1 : 0);
 
-        out.writeByte(label);
+        System.out.println(label);
+
+//        out.writeByte(label);
       }
     }
   }
