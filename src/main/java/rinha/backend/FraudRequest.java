@@ -71,11 +71,14 @@ public record FraudRequest(
     JsonObject lastTransactionJson =
       body.getJsonObject("last_transaction");
 
-    LastTransaction lastTransaction =
-      new LastTransaction(
+    LastTransaction lastTransaction = null;
+
+    if (lastTransactionJson != null) {
+      lastTransaction = new LastTransaction(
         lastTransactionJson.getString("timestamp"),
         lastTransactionJson.getDouble("km_from_current")
       );
+    }
 
     return new FraudRequest(
       body.getString("id"),

@@ -54,9 +54,9 @@ public final class DatasetConverter {
 
         byte label = (byte) ("fraud".equals(obj.getString("label")) ? 1 : 0);
 
-        System.out.println(label);
+//        System.out.println(label);
 
-//        out.writeByte(label);
+        out.writeByte(label);
       }
     }
   }

@@ -28,7 +28,7 @@ public class MainVerticle extends VerticleBase {
 
     return vertx.createHttpServer()
       .requestHandler(router)
-      .listen(8080)
+      .listen(9999)
       .onSuccess(server -> System.out.println("HTTP server started on port " + server.actualPort()));
   }
 }
