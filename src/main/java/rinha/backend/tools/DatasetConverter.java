@@ -57,6 +57,9 @@ public final class DatasetConverter {
 //        System.out.println(label);
 
         out.writeByte(label);
+        out.writeByte(0);
+        out.writeByte(0);
+        out.writeByte(0);
       }
     }
   }

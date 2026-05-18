@@ -7,9 +7,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public final class VpTreeBuilder {
 
@@ -24,13 +21,10 @@ public final class VpTreeBuilder {
   private int[] nodeLeft;
   private int[] nodeRight;
 
-  private final AtomicInteger nodeCount = new AtomicInteger();
+  private int nodeCount;
 
   private float[] vectors;
   private int dimensions;
-
-  private static final int PARALLEL_THRESHOLD = 100_000;
-  private final ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
 
   static void main() throws Exception {
     Path output = Path.of("vptree.bin");
@@ -87,20 +81,18 @@ public final class VpTreeBuilder {
     System.out.printf(
       "VP-Tree construída. root=%d, nodes=%d, tempo=%.2f s%n",
       root,
-      nodeCount.get(),
+      nodeCount,
       (t1 - t0) / 1_000_000_000.0
     );
 
     write(output);
-
-    pool.shutdown();
   }
 
   /**
    * Constrói a árvore usando o intervalo [from, to).
    * Retorna o índice do nó criado.
    */
-  private int build(int from, int to) throws Exception {
+  private int build(int from, int to) {
     int count = to - from;
 
     if (count <= 0) {
@@ -111,17 +103,13 @@ public final class VpTreeBuilder {
     int vp = pointIndex[from];
 
     // Cria o nó
-    int node = nodeCount.getAndIncrement();
+    int node = nodeCount++;
 
-    int currentNodeCount = nodeCount.get();
-
-    System.out.println("currentNodeCount: " + currentNodeCount);
-
-    if ((currentNodeCount % 10_000) == 0) {
+    if ((nodeCount % 10_000) == 0) {
       System.out.printf(
         "Nós criados: %,d (%.2f%%)%n",
-        currentNodeCount,
-        currentNodeCount * 100.0 / dataset.size()
+        nodeCount,
+        nodeCount * 100.0 / dataset.size()
       );
     }
 
@@ -134,43 +122,37 @@ public final class VpTreeBuilder {
     }
 
     // Calcula as distâncias do vantage point para os demais pontos
-    pool.submit(() ->
-      java.util.stream.IntStream
-        .range(from + 1, to)
-        .parallel()
-        .forEach(i ->
-          distances[i] = squaredDistance(vp, pointIndex[i])
-        )
-    ).get();
+    for (int i = from + 1; i < to; i++) {
+      float dist = squaredDistance(vp, pointIndex[i]);
+
+      if (!Float.isFinite(dist)) {
+        System.out.printf(
+          "Distância inválida! vp=%d point=%d dist=%f%n",
+          vp,
+          pointIndex[i],
+          dist
+        );
+        throw new RuntimeException("Distância inválida");
+      }
+
+      distances[i] = dist;
+    }
 
     // Encontra a mediana das distâncias
-    int median = from + 1 + (count - 1) / 2;
+    int median = from + 1 + (count - 2) / 2;
     quickSelect(from + 1, to - 1, median);
 
     // Raio do nó (distância mediana)
     nodeRadius[node] = distances[median];
 
-    // Intervalos das subárvores
     int leftFrom = from + 1;
     int leftTo = median;
     int rightFrom = median;
     int rightTo = to;
 
-    // Para subárvores grandes, constrói em paralelo
-    if (count > PARALLEL_THRESHOLD) {
-      Future<Integer> leftFuture =
-        pool.submit(() -> build(leftFrom, leftTo));
-
-      // Processa a subárvore direita na thread atual
-      nodeRight[node] = build(rightFrom, rightTo);
-
-      // Aguarda a conclusão da esquerda
-      nodeLeft[node] = leftFuture.get();
-    } else {
-      // Para subárvores menores, executa sequencialmente
-      nodeLeft[node] = build(leftFrom, leftTo);
-      nodeRight[node] = build(rightFrom, rightTo);
-    }
+    // Construção sequencial
+    nodeLeft[node] = build(leftFrom, leftTo);
+    nodeRight[node] = build(rightFrom, rightTo);
 
     return node;
   }
@@ -185,8 +167,77 @@ public final class VpTreeBuilder {
     float sum = 0f;
 
     for (int d = 0; d < dimensions; d++) {
-      float diff = vectors[baseA + d] - vectors[baseB + d];
-      sum += diff * diff;
+      float va = vectors[baseA + d];
+      float vb = vectors[baseB + d];
+
+      // Log detalhado caso algum valor seja inválido
+      if (!Float.isFinite(va) || !Float.isFinite(vb)) {
+        System.out.printf(
+          "Valor inválido encontrado! a=%d b=%d dim=%d va=%f vb=%f%n",
+          a,
+          b,
+          d,
+          va,
+          vb
+        );
+
+        // Mostra todas as dimensões dos dois vetores
+        System.out.println("=== Vetor A ===");
+        for (int i = 0; i < dimensions; i++) {
+          System.out.printf("A[%d] = %f%n", i, vectors[baseA + i]);
+        }
+
+        System.out.println("=== Vetor B ===");
+        for (int i = 0; i < dimensions; i++) {
+          System.out.printf("B[%d] = %f%n", i, vectors[baseB + i]);
+        }
+
+        throw new RuntimeException("Valor inválido no vetor");
+      }
+
+      float diff = va - vb;
+      float term = diff * diff;
+
+      // Log caso o termo individual estoure
+      if (!Float.isFinite(term)) {
+        System.out.printf(
+          "Overflow no termo! a=%d b=%d dim=%d va=%f vb=%f diff=%f term=%f%n",
+          a,
+          b,
+          d,
+          va,
+          vb,
+          diff,
+          term
+        );
+        throw new RuntimeException("Overflow no termo da distância");
+      }
+
+      sum += term;
+
+      // Log caso a soma fique inválida
+      if (!Float.isFinite(sum)) {
+        System.out.printf(
+          "Overflow na soma! a=%d b=%d dim=%d term=%f sum=%f%n",
+          a,
+          b,
+          d,
+          term,
+          sum
+        );
+
+        System.out.println("=== Vetor A ===");
+        for (int i = 0; i < dimensions; i++) {
+          System.out.printf("A[%d] = %f%n", i, vectors[baseA + i]);
+        }
+
+        System.out.println("=== Vetor B ===");
+        for (int i = 0; i < dimensions; i++) {
+          System.out.printf("B[%d] = %f%n", i, vectors[baseB + i]);
+        }
+
+        throw new RuntimeException("Overflow na soma da distância");
+      }
     }
 
     return sum;
@@ -196,8 +247,6 @@ public final class VpTreeBuilder {
    * Quickselect para posicionar o k-ésimo menor elemento.
    */
   private void quickSelect(int left, int right, int k) {
-//    System.out.println("quickSelect");
-
     while (left < right) {
       int pivot = partition(left, right);
 
@@ -214,8 +263,6 @@ public final class VpTreeBuilder {
   }
 
   private int partition(int left, int right) {
-//    System.out.println("partition");
-
     float pivotValue = distances[right];
     int store = left;
 
@@ -232,8 +279,6 @@ public final class VpTreeBuilder {
   }
 
   private void swap(int i, int j) {
-//    System.out.println("swap");
-
     if (i == j) {
       return;
     }
@@ -248,8 +293,6 @@ public final class VpTreeBuilder {
   }
 
   private void write(Path output) throws IOException {
-//    System.out.println("write");
-
     try (
       DataOutputStream out = new DataOutputStream(
         new BufferedOutputStream(
@@ -257,7 +300,7 @@ public final class VpTreeBuilder {
         )
       )
     ) {
-      int totalNodes = nodeCount.get();
+      int totalNodes = nodeCount;
 
       for (int i = 0; i < totalNodes; i++) {
         out.writeInt(nodePointIndex[i]);

@@ -12,9 +12,10 @@ public final class ReferenceDataset {
   private static final int DIMENSIONS = 14;
   private static final int FLOAT_SIZE = 4;
   private static final int LABEL_SIZE = 1;
+  private static final int JUMP_SIZE = 3;
 
   // 14 floats (56 bytes) + 1 byte de label = 57 bytes
-  private static final int RECORD_SIZE = DIMENSIONS * FLOAT_SIZE + LABEL_SIZE;
+  private static final int RECORD_SIZE = DIMENSIONS * FLOAT_SIZE + LABEL_SIZE + JUMP_SIZE;
 
   private static final String FILE_PATH = "references.bin";
 
