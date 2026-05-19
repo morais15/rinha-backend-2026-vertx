@@ -88,10 +88,6 @@ public final class VpTreeBuilder {
     write(output);
   }
 
-  /**
-   * Constrói a árvore usando o intervalo [from, to).
-   * Retorna o índice do nó criado.
-   */
   private int build(int from, int to) {
     int count = to - from;
 
@@ -99,10 +95,7 @@ public final class VpTreeBuilder {
       return -1;
     }
 
-    // Escolhe o primeiro elemento como vantage point
     int vp = pointIndex[from];
-
-    // Cria o nó
     int node = nodeCount++;
 
     if ((nodeCount % 10_000) == 0) {
@@ -115,51 +108,88 @@ public final class VpTreeBuilder {
 
     nodePointIndex[node] = vp;
 
-    // Folha
     if (count == 1) {
       nodeRadius[node] = 0f;
       return node;
     }
 
-    // Calcula as distâncias do vantage point para os demais pontos
     for (int i = from + 1; i < to; i++) {
-      float dist = squaredDistance(vp, pointIndex[i]);
-
-      if (!Float.isFinite(dist)) {
-        System.out.printf(
-          "Distância inválida! vp=%d point=%d dist=%f%n",
-          vp,
-          pointIndex[i],
-          dist
-        );
-        throw new RuntimeException("Distância inválida");
-      }
-
-      distances[i] = dist;
+      distances[i] = squaredDistance(vp, pointIndex[i]);
     }
 
-    // Encontra a mediana das distâncias
-    int median = from + 1 + (count - 2) / 2;
+    int median = (from + 1 + to) >>> 1;
     quickSelect(from + 1, to - 1, median);
 
-    // Raio do nó (distância mediana)
-    nodeRadius[node] = distances[median];
+    float radius = distances[median];
+    nodeRadius[node] = radius;
 
-    int leftFrom = from + 1;
-    int leftTo = median;
-    int rightFrom = median;
-    int rightTo = to;
+    int split = from + 1;
 
-    // Construção sequencial
-    nodeLeft[node] = build(leftFrom, leftTo);
-    nodeRight[node] = build(rightFrom, rightTo);
+    for (int i = from + 1; i < to; i++) {
+      if (distances[i] < radius) {
+        swap(i, split);
+        split++;
+      }
+    }
+
+    final boolean VALIDATE_PARTITION = true;
+
+    if (VALIDATE_PARTITION) {
+      for (int i = from + 1; i < split; i++) {
+        float d = squaredDistance(vp, pointIndex[i]);
+
+        if (!(d < radius)) {
+          System.out.println();
+          System.out.println("=== PARTIÇÃO INVÁLIDA (LEFT) ===");
+          System.out.printf(
+            "node=%d vp=%d radius=%.9f%n",
+            node,
+            vp,
+            radius
+          );
+          System.out.printf(
+            "index=%d point=%d distance=%.9f%n",
+            i,
+            pointIndex[i],
+            d
+          );
+          System.out.println("Esperado: distance < radius");
+
+          throw new RuntimeException("VP-Tree inválida (LEFT)");
+        }
+      }
+
+      for (int i = split; i < to; i++) {
+        float d = squaredDistance(vp, pointIndex[i]);
+
+        if (!(d >= radius)) {
+          System.out.println();
+          System.out.println("=== PARTIÇÃO INVÁLIDA (RIGHT) ===");
+          System.out.printf(
+            "node=%d vp=%d radius=%.9f%n",
+            node,
+            vp,
+            radius
+          );
+          System.out.printf(
+            "index=%d point=%d distance=%.9f%n",
+            i,
+            pointIndex[i],
+            d
+          );
+          System.out.println("Esperado: distance >= radius");
+
+          throw new RuntimeException("VP-Tree inválida (RIGHT)");
+        }
+      }
+    }
+
+    nodeLeft[node] = build(from + 1, split);
+    nodeRight[node] = build(split, to);
 
     return node;
   }
 
-  /**
-   * Distância euclidiana ao quadrado (evita sqrt).
-   */
   private float squaredDistance(int a, int b) {
     int baseA = a * dimensions;
     int baseB = b * dimensions;
@@ -167,80 +197,11 @@ public final class VpTreeBuilder {
     float sum = 0f;
 
     for (int d = 0; d < dimensions; d++) {
-      float va = vectors[baseA + d];
-      float vb = vectors[baseB + d];
-
-      // Log detalhado caso algum valor seja inválido
-      if (!Float.isFinite(va) || !Float.isFinite(vb)) {
-        System.out.printf(
-          "Valor inválido encontrado! a=%d b=%d dim=%d va=%f vb=%f%n",
-          a,
-          b,
-          d,
-          va,
-          vb
-        );
-
-        // Mostra todas as dimensões dos dois vetores
-        System.out.println("=== Vetor A ===");
-        for (int i = 0; i < dimensions; i++) {
-          System.out.printf("A[%d] = %f%n", i, vectors[baseA + i]);
-        }
-
-        System.out.println("=== Vetor B ===");
-        for (int i = 0; i < dimensions; i++) {
-          System.out.printf("B[%d] = %f%n", i, vectors[baseB + i]);
-        }
-
-        throw new RuntimeException("Valor inválido no vetor");
-      }
-
-      float diff = va - vb;
-      float term = diff * diff;
-
-      // Log caso o termo individual estoure
-      if (!Float.isFinite(term)) {
-        System.out.printf(
-          "Overflow no termo! a=%d b=%d dim=%d va=%f vb=%f diff=%f term=%f%n",
-          a,
-          b,
-          d,
-          va,
-          vb,
-          diff,
-          term
-        );
-        throw new RuntimeException("Overflow no termo da distância");
-      }
-
-      sum += term;
-
-      // Log caso a soma fique inválida
-      if (!Float.isFinite(sum)) {
-        System.out.printf(
-          "Overflow na soma! a=%d b=%d dim=%d term=%f sum=%f%n",
-          a,
-          b,
-          d,
-          term,
-          sum
-        );
-
-        System.out.println("=== Vetor A ===");
-        for (int i = 0; i < dimensions; i++) {
-          System.out.printf("A[%d] = %f%n", i, vectors[baseA + i]);
-        }
-
-        System.out.println("=== Vetor B ===");
-        for (int i = 0; i < dimensions; i++) {
-          System.out.printf("B[%d] = %f%n", i, vectors[baseB + i]);
-        }
-
-        throw new RuntimeException("Overflow na soma da distância");
-      }
+      float diff = vectors[baseA + d] - vectors[baseB + d];
+      sum += diff * diff;
     }
 
-    return sum;
+    return (float) Math.sqrt(sum);
   }
 
   /**
