@@ -9,16 +9,14 @@ import java.nio.file.StandardOpenOption;
 
 public final class VpTree {
 
-  private static final int NODE_SIZE = 16;
   private static final String FILE_PATH = "vptree.bin";
 
-  // Buffer mestre, compartilhado apenas para criar duplicates
-  private final MappedByteBuffer masterBuffer;
+  private static final int POINT_OFFSET = 0;
+  private static final int RADIUS_OFFSET = 4;
+  private static final int LEFT_OFFSET = 8;
+  private static final int RIGHT_OFFSET = 12;
 
-  // Cada thread recebe seu próprio buffer
   private final ThreadLocal<MappedByteBuffer> localBuffer;
-
-  private final int size;
 
   public VpTree() {
     try (
@@ -27,51 +25,43 @@ public final class VpTree {
         StandardOpenOption.READ
       )
     ) {
-      long fileSize = channel.size();
-
-      this.size = (int) (fileSize / NODE_SIZE);
-
-      this.masterBuffer = channel.map(
+      final MappedByteBuffer masterBuffer = channel.map(
         FileChannel.MapMode.READ_ONLY,
         0,
-        fileSize
+        channel.size()
       );
 
-      this.masterBuffer.order(ByteOrder.BIG_ENDIAN);
+      masterBuffer.order(ByteOrder.BIG_ENDIAN);
 
-      this.localBuffer = ThreadLocal.withInitial(() -> {
-        MappedByteBuffer duplicate =
-          (MappedByteBuffer) masterBuffer.duplicate();
+      localBuffer = ThreadLocal.withInitial(() -> {
+        final MappedByteBuffer duplicate = masterBuffer.duplicate();
         duplicate.order(ByteOrder.BIG_ENDIAN);
         return duplicate;
       });
 
     } catch (IOException e) {
-      throw new RuntimeException("Erro ao carregar VP-Tree", e);
+      System.exit(-2);
+      throw new RuntimeException(e);
     }
   }
 
-  private MappedByteBuffer buffer() {
-    return localBuffer.get();
-  }
-
-  public int size() {
-    return size;
-  }
-
   public int pointIndex(int node) {
-    return buffer().getInt(node * NODE_SIZE);
+    final int offset = node << 4;
+    return localBuffer.get().getInt(offset + POINT_OFFSET);
   }
 
   public float radius(int node) {
-    return buffer().getFloat(node * NODE_SIZE + 4);
+    final int offset = node << 4;
+    return localBuffer.get().getFloat(offset + RADIUS_OFFSET);
   }
 
   public int left(int node) {
-    return buffer().getInt(node * NODE_SIZE + 8);
+    final int offset = node << 4;
+    return localBuffer.get().getInt(offset + LEFT_OFFSET);
   }
 
   public int right(int node) {
-    return buffer().getInt(node * NODE_SIZE + 12);
+    final int offset = node << 4;
+    return localBuffer.get().getInt(offset + RIGHT_OFFSET);
   }
 }

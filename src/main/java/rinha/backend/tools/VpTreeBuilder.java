@@ -5,6 +5,7 @@ import rinha.backend.ReferenceDataset;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
@@ -15,7 +16,6 @@ public final class VpTreeBuilder {
   private int[] pointIndex;
   private float[] distances;
 
-  // Arrays que representam os nós
   private int[] nodePointIndex;
   private float[] nodeRadius;
   private int[] nodeLeft;
@@ -24,15 +24,13 @@ public final class VpTreeBuilder {
   private int nodeCount;
 
   private float[] vectors;
-  private int dimensions;
+
+  private static final int DIMENSIONS = 14;
 
   static void main() throws Exception {
-    Path output = Path.of("vptree.bin");
-
     ReferenceDataset dataset = new ReferenceDataset();
     VpTreeBuilder builder = new VpTreeBuilder(dataset);
-
-    builder.buildAndSave(output);
+    builder.buildAndSave(Path.of("vptree.bin"));
   }
 
   public VpTreeBuilder(ReferenceDataset dataset) {
@@ -40,23 +38,16 @@ public final class VpTreeBuilder {
   }
 
   public void buildAndSave(Path output) throws Exception {
-    int n = dataset.size();
+    final int n = dataset.size();
+    final int totalFloats = n * DIMENSIONS;
 
-    System.out.println("Dataset size: " + n);
+    vectors = new float[totalFloats];
 
-    this.dimensions = dataset.dimensions();
-    this.vectors = new float[n * dimensions];
-
-    System.out.println("Carregando dataset em memória...");
-
-    for (int i = 0; i < n; i++) {
-      int base = i * dimensions;
-      for (int d = 0; d < dimensions; d++) {
+    for (int i = 0, base = 0; i < n; i++, base += DIMENSIONS) {
+      for (int d = 0; d < DIMENSIONS; d++) {
         vectors[base + d] = dataset.get(i, d);
       }
     }
-
-    System.out.println("Dataset carregado em RAM.");
 
     pointIndex = new int[n];
     distances = new float[n];
@@ -65,7 +56,6 @@ public final class VpTreeBuilder {
       pointIndex[i] = i;
     }
 
-    // 1 nó por ponto
     nodePointIndex = new int[n];
     nodeRadius = new float[n];
     nodeLeft = new int[n];
@@ -74,144 +64,73 @@ public final class VpTreeBuilder {
     Arrays.fill(nodeLeft, -1);
     Arrays.fill(nodeRight, -1);
 
-    long t0 = System.nanoTime();
-    int root = build(0, n);
-    long t1 = System.nanoTime();
-
-    System.out.printf(
-      "VP-Tree construída. root=%d, nodes=%d, tempo=%.2f s%n",
-      root,
-      nodeCount,
-      (t1 - t0) / 1_000_000_000.0
-    );
+    build(0, n);
 
     write(output);
   }
 
   private int build(int from, int to) {
-    int count = to - from;
+    final int count = to - from;
 
     if (count <= 0) {
       return -1;
     }
 
-    int vp = pointIndex[from];
-    int node = nodeCount++;
-
-    if ((nodeCount % 10_000) == 0) {
-      System.out.printf(
-        "Nós criados: %,d (%.2f%%)%n",
-        nodeCount,
-        nodeCount * 100.0 / dataset.size()
-      );
-    }
+    final int node = nodeCount++;
+    final int vp = pointIndex[from];
 
     nodePointIndex[node] = vp;
 
     if (count == 1) {
-      nodeRadius[node] = 0f;
       return node;
     }
 
-    for (int i = from + 1; i < to; i++) {
-      distances[i] = squaredDistance(vp, pointIndex[i]);
+    final int start = from + 1;
+
+    for (int i = start; i < to; i++) {
+      distances[i] = distance(vp, pointIndex[i]);
     }
 
-    int median = (from + 1 + to) >>> 1;
-    quickSelect(from + 1, to - 1, median);
+    final int median = from + 1 + ((to - from - 1) >>> 1);
 
-    float radius = distances[median];
+    quickSelect(start, to - 1, median);
+
+    final float radius = distances[median];
     nodeRadius[node] = radius;
 
-    int split = from + 1;
+    int split = start;
 
-    for (int i = from + 1; i < to; i++) {
+    for (int i = start; i < to; i++) {
       if (distances[i] < radius) {
-        swap(i, split);
-        split++;
+        swap(i, split++);
       }
     }
 
-    final boolean VALIDATE_PARTITION = true;
-
-    if (VALIDATE_PARTITION) {
-      for (int i = from + 1; i < split; i++) {
-        float d = squaredDistance(vp, pointIndex[i]);
-
-        if (!(d < radius)) {
-          System.out.println();
-          System.out.println("=== PARTIÇÃO INVÁLIDA (LEFT) ===");
-          System.out.printf(
-            "node=%d vp=%d radius=%.9f%n",
-            node,
-            vp,
-            radius
-          );
-          System.out.printf(
-            "index=%d point=%d distance=%.9f%n",
-            i,
-            pointIndex[i],
-            d
-          );
-          System.out.println("Esperado: distance < radius");
-
-          throw new RuntimeException("VP-Tree inválida (LEFT)");
-        }
-      }
-
-      for (int i = split; i < to; i++) {
-        float d = squaredDistance(vp, pointIndex[i]);
-
-        if (!(d >= radius)) {
-          System.out.println();
-          System.out.println("=== PARTIÇÃO INVÁLIDA (RIGHT) ===");
-          System.out.printf(
-            "node=%d vp=%d radius=%.9f%n",
-            node,
-            vp,
-            radius
-          );
-          System.out.printf(
-            "index=%d point=%d distance=%.9f%n",
-            i,
-            pointIndex[i],
-            d
-          );
-          System.out.println("Esperado: distance >= radius");
-
-          throw new RuntimeException("VP-Tree inválida (RIGHT)");
-        }
-      }
-    }
-
-    nodeLeft[node] = build(from + 1, split);
+    nodeLeft[node] = build(start, split);
     nodeRight[node] = build(split, to);
 
     return node;
   }
 
-  private float squaredDistance(int a, int b) {
-    int baseA = a * dimensions;
-    int baseB = b * dimensions;
+  private float distance(int a, int b) {
+    final int baseA = a * DIMENSIONS;
+    final int baseB = b * DIMENSIONS;
 
     float sum = 0f;
 
-    for (int d = 0; d < dimensions; d++) {
-      float diff = vectors[baseA + d] - vectors[baseB + d];
+    for (int d = 0; d < DIMENSIONS; d++) {
+      final float diff = vectors[baseA + d] - vectors[baseB + d];
       sum += diff * diff;
     }
 
     return (float) Math.sqrt(sum);
   }
 
-  /**
-   * Quickselect para posicionar o k-ésimo menor elemento.
-   */
   private void quickSelect(int left, int right, int k) {
     while (left < right) {
-      int pivot = partition(left, right);
+      final int pivot = partition(left, right);
 
-      if (k == pivot) {
+      if (pivot == k) {
         return;
       }
 
@@ -224,13 +143,12 @@ public final class VpTreeBuilder {
   }
 
   private int partition(int left, int right) {
-    float pivotValue = distances[right];
+    final float pivotValue = distances[right];
     int store = left;
 
     for (int i = left; i < right; i++) {
       if (distances[i] < pivotValue) {
-        swap(i, store);
-        store++;
+        swap(i, store++);
       }
     }
 
@@ -244,40 +162,27 @@ public final class VpTreeBuilder {
       return;
     }
 
-    float td = distances[i];
+    final float distanceTmp = distances[i];
     distances[i] = distances[j];
-    distances[j] = td;
+    distances[j] = distanceTmp;
 
-    int tp = pointIndex[i];
+    final int pointTmp = pointIndex[i];
     pointIndex[i] = pointIndex[j];
-    pointIndex[j] = tp;
+    pointIndex[j] = pointTmp;
   }
 
   private void write(Path output) throws IOException {
     try (
       DataOutputStream out = new DataOutputStream(
-        new BufferedOutputStream(
-          java.nio.file.Files.newOutputStream(output)
-        )
+        new BufferedOutputStream(Files.newOutputStream(output), 1 << 20)
       )
     ) {
-      int totalNodes = nodeCount;
-
-      for (int i = 0; i < totalNodes; i++) {
+      for (int i = 0; i < nodeCount; i++) {
         out.writeInt(nodePointIndex[i]);
         out.writeFloat(nodeRadius[i]);
         out.writeInt(nodeLeft[i]);
         out.writeInt(nodeRight[i]);
       }
-
-      long bytes = (long) totalNodes * 16;
-
-      System.out.printf(
-        "Arquivo gerado: %s (%d nós, %.2f MB)%n",
-        output,
-        totalNodes,
-        bytes / 1024.0 / 1024.0
-      );
     }
   }
 }

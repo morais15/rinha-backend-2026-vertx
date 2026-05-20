@@ -46,10 +46,6 @@ public final class ReferenceDataset {
     return size;
   }
 
-  public int dimensions() {
-    return DIMENSIONS;
-  }
-
   public float get(int recordIndex, int dimension) {
     int offset = recordIndex * RECORD_SIZE + dimension * FLOAT_SIZE;
     return buffer.getFloat(offset);
