@@ -1,0 +1,7 @@
+{
+  "participants": ["Douglas Morais"],
+  "social": ["https://github.com/morais15", "https://www.linkedin.com/in/morais15"],
+  "source-code-repo": "https://github.com/morais15/rinha-backend-2026-vertx",
+  "stack": ["java", "nginx", "vertx", "vptree"],
+  "open_to_work": false
+}
