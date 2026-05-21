@@ -5,19 +5,36 @@ import io.vertx.ext.web.RoutingContext;
 
 import static rinha.backend.Vectorizer.vectorize;
 
-public class MainHandler {
+public final class MainHandler {
 
-  private final ReferenceDataset referenceDataset = new ReferenceDataset();
-  private final KnnSearch knnSearch = new KnnSearch(referenceDataset);
+  private final KnnSearch knnSearch;
+  private final boolean ready;
+
+  public MainHandler() {
+    try {
+      knnSearch = new KnnSearch(new ReferenceDataset());
+      ready = true;
+    } catch (Throwable e) {
+      System.exit(-3);
+      throw e;
+    }
+  }
 
   public void ready(RoutingContext ctx) {
+    if (!ready) {
+      ctx.response()
+        .setStatusCode(503)
+        .end();
+      return;
+    }
+
     ctx.response()
       .setStatusCode(200)
       .end();
   }
 
   public void fraudScore(RoutingContext ctx) {
-    var request = FraudRequest.parse(ctx.body().asJsonObject());
+    FraudRequest request = FraudRequest.parse(ctx.body().asJsonObject());
 
     float[] queryVector = vectorize(request);
 
