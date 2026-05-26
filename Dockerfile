@@ -3,6 +3,7 @@ FROM --platform=linux/amd64 ghcr.io/graalvm/native-image-community:25 AS builder
 WORKDIR /app
 COPY . .
 
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
 RUN ./mvnw -Pnative -DskipTests package
 
 
