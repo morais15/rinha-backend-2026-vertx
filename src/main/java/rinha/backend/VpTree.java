@@ -9,35 +9,67 @@ import java.nio.file.StandardOpenOption;
 
 public final class VpTree {
 
-  private static final String FILE_PATH = "vptree.bin";
+  private static final String FILE_PATH =
+    "vptree.bin";
+
+  private static final int NODE_SIZE = 20;
 
   private static final int POINT_OFFSET = 0;
   private static final int RADIUS_OFFSET = 4;
-  private static final int LEFT_OFFSET = 8;
-  private static final int RIGHT_OFFSET = 12;
+  private static final int LEFT_OFFSET = 12;
+  private static final int RIGHT_OFFSET = 16;
 
-  private final ThreadLocal<MappedByteBuffer> localBuffer;
+  private final int[] pointIndex;
+  private final long[] radius;
+  private final int[] left;
+  private final int[] right;
 
   public VpTree() {
+
     try (
-      FileChannel channel = FileChannel.open(
-        Path.of(FILE_PATH),
-        StandardOpenOption.READ
-      )
+      FileChannel channel =
+        FileChannel.open(
+          Path.of(FILE_PATH),
+          StandardOpenOption.READ
+        )
     ) {
-      final MappedByteBuffer masterBuffer = channel.map(
-        FileChannel.MapMode.READ_ONLY,
-        0,
-        channel.size()
-      );
 
-      masterBuffer.order(ByteOrder.BIG_ENDIAN);
+      final long fileSize = channel.size();
 
-      localBuffer = ThreadLocal.withInitial(() -> {
-        final MappedByteBuffer duplicate = masterBuffer.duplicate();
-        duplicate.order(ByteOrder.BIG_ENDIAN);
-        return duplicate;
-      });
+      final int nodeCount =
+        (int) (fileSize / NODE_SIZE);
+
+      final MappedByteBuffer buffer =
+        channel.map(
+          FileChannel.MapMode.READ_ONLY,
+          0,
+          fileSize
+        );
+
+      buffer.order(ByteOrder.BIG_ENDIAN);
+
+      pointIndex = new int[nodeCount];
+      radius = new long[nodeCount];
+      left = new int[nodeCount];
+      right = new int[nodeCount];
+
+      for (int node = 0; node < nodeCount; node++) {
+
+        final int offset =
+          node * NODE_SIZE;
+
+        pointIndex[node] =
+          buffer.getInt(offset + POINT_OFFSET);
+
+        radius[node] =
+          buffer.getLong(offset + RADIUS_OFFSET);
+
+        left[node] =
+          buffer.getInt(offset + LEFT_OFFSET);
+
+        right[node] =
+          buffer.getInt(offset + RIGHT_OFFSET);
+      }
 
     } catch (IOException e) {
       System.exit(-2);
@@ -46,22 +78,18 @@ public final class VpTree {
   }
 
   public int pointIndex(int node) {
-    final int offset = node << 4;
-    return localBuffer.get().getInt(offset + POINT_OFFSET);
+    return pointIndex[node];
   }
 
-  public float radius(int node) {
-    final int offset = node << 4;
-    return localBuffer.get().getFloat(offset + RADIUS_OFFSET);
+  public long radius(int node) {
+    return radius[node];
   }
 
   public int left(int node) {
-    final int offset = node << 4;
-    return localBuffer.get().getInt(offset + LEFT_OFFSET);
+    return left[node];
   }
 
   public int right(int node) {
-    final int offset = node << 4;
-    return localBuffer.get().getInt(offset + RIGHT_OFFSET);
+    return right[node];
   }
 }

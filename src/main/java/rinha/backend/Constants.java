@@ -13,6 +13,8 @@ public final class Constants {
   public static final float MAX_TX_COUNT_24H = 20f;
   public static final float MAX_MERCHANT_AVG_AMOUNT = 10_000f;
 
+  public static final float SHORT_SCALE = 32767f;
+
   public static float getMccRisk(String mcc) {
     return switch (mcc) {
       case "5411" -> 0.15f;

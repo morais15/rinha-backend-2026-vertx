@@ -6,14 +6,15 @@ public final class KnnSearch {
 
   private static final int K = 5;
   private static final int DIMENSIONS = 14;
-  private static final float INFINITY = Float.POSITIVE_INFINITY;
-  private static final float MAX_VALUE = Float.MAX_VALUE;
+
+  private static final long MAX_VALUE =
+    Long.MAX_VALUE;
 
   private final ReferenceDataset dataset;
   private final VpTree tree = new VpTree();
 
-  private final ThreadLocal<float[]> bestDistancesLocal =
-    ThreadLocal.withInitial(() -> new float[K]);
+  private final ThreadLocal<long[]> bestDistancesLocal =
+    ThreadLocal.withInitial(() -> new long[K]);
 
   private final ThreadLocal<byte[]> bestLabelsLocal =
     ThreadLocal.withInitial(() -> new byte[K]);
@@ -22,14 +23,23 @@ public final class KnnSearch {
     this.dataset = dataset;
   }
 
-  public int search(float[] query) {
-    final float[] bestDistances = bestDistancesLocal.get();
-    final byte[] bestLabels = bestLabelsLocal.get();
+  public int search(short[] query) {
+
+    final long[] bestDistances =
+      bestDistancesLocal.get();
+
+    final byte[] bestLabels =
+      bestLabelsLocal.get();
 
     Arrays.fill(bestDistances, MAX_VALUE);
     Arrays.fill(bestLabels, (byte) 0);
 
-    searchNode(0, query, bestDistances, bestLabels);
+    searchNode(
+      0,
+      query,
+      bestDistances,
+      bestLabels
+    );
 
     return bestLabels[0]
       + bestLabels[1]
@@ -40,16 +50,20 @@ public final class KnnSearch {
 
   private void searchNode(
     int node,
-    float[] query,
-    float[] bestDistances,
+    short[] query,
+    long[] bestDistances,
     byte[] bestLabels
   ) {
+
     if (node == -1) {
       return;
     }
 
-    final int pointIndex = tree.pointIndex(node);
-    final float distance = distance(query, pointIndex);
+    final int pointIndex =
+      tree.pointIndex(node);
+
+    final long distance =
+      distanceSquared(query, pointIndex);
 
     updateBest(
       distance,
@@ -58,61 +72,102 @@ public final class KnnSearch {
       bestLabels
     );
 
-    final float radius = tree.radius(node);
-    final int left = tree.left(node);
-    final int right = tree.right(node);
+    final long radius =
+      tree.radius(node);
+
+    final int left =
+      tree.left(node);
+
+    final int right =
+      tree.right(node);
+
+    final long tau =
+      bestDistances[K - 1];
 
     if (distance < radius) {
-      searchNode(left, query, bestDistances, bestLabels);
 
-      final float tau =
-        bestDistances[K - 1] == MAX_VALUE
-          ? INFINITY
-          : bestDistances[K - 1];
+      searchNode(
+        left,
+        query,
+        bestDistances,
+        bestLabels
+      );
 
       if (distance + tau >= radius) {
-        searchNode(right, query, bestDistances, bestLabels);
+        searchNode(
+          right,
+          query,
+          bestDistances,
+          bestLabels
+        );
       }
-    } else {
-      searchNode(right, query, bestDistances, bestLabels);
 
-      final float tau =
-        bestDistances[K - 1] == MAX_VALUE
-          ? INFINITY
-          : bestDistances[K - 1];
+    } else {
+
+      searchNode(
+        right,
+        query,
+        bestDistances,
+        bestLabels
+      );
 
       if (distance - tau < radius) {
-        searchNode(left, query, bestDistances, bestLabels);
+        searchNode(
+          left,
+          query,
+          bestDistances,
+          bestLabels
+        );
       }
     }
   }
 
-  private float distance(float[] query, int recordIndex) {
-    float sum = 0f;
+  private long distanceSquared(
+    short[] query,
+    int recordIndex
+  ) {
+
+    long sum = 0;
 
     for (int d = 0; d < DIMENSIONS; d++) {
-      final float diff = query[d] - dataset.get(recordIndex, d);
+
+      final long diff =
+        query[d] -
+          dataset.getQuantized(
+            recordIndex,
+            d
+          );
+
       sum += diff * diff;
     }
 
-    return (float) Math.sqrt(sum);
+    return sum;
   }
 
   private void updateBest(
-    float distance,
+    long distance,
     byte label,
-    float[] bestDistances,
+    long[] bestDistances,
     byte[] bestLabels
   ) {
+
     if (distance >= bestDistances[K - 1]) {
       return;
     }
 
     int pos = K - 1;
 
-    while (pos > 0 && distance < bestDistances[pos - 1]) {
-      bestDistances[pos] = bestDistances[pos - 1];
-      bestLabels[pos] = bestLabels[pos - 1];
+    while (
+      pos > 0 &&
+        distance < bestDistances[pos - 1]
+    ) {
+
+      bestDistances[pos] =
+        bestDistances[pos - 1];
+
+      bestLabels[pos] =
+        bestLabels[pos - 1];
+
       pos--;
     }
 

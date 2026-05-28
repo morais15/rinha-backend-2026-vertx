@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.GZIPInputStream;
 
+import static rinha.backend.Constants.SHORT_SCALE;
+
 public final class DatasetConverter {
 
   private static final int DIMENSIONS = 14;
@@ -46,21 +48,21 @@ public final class DatasetConverter {
 
         JsonArray vector = obj.getJsonArray("vector");
 
-//        System.out.println(vector);
-
         for (int d = 0; d < DIMENSIONS; d++) {
-          out.writeFloat(vector.getFloat(d));
+          out.writeShort(
+            encode(vector.getFloat(d))
+          );
         }
 
-        byte label = (byte) ("fraud".equals(obj.getString("label")) ? 1 : 0);
-
-//        System.out.println(label);
+        byte label =
+          (byte) ("fraud".equals(obj.getString("label")) ? 1 : 0);
 
         out.writeByte(label);
-        out.writeByte(0);
-        out.writeByte(0);
-        out.writeByte(0);
       }
     }
+  }
+
+  private static short encode(float value) {
+    return (short) (value * SHORT_SCALE);
   }
 }
