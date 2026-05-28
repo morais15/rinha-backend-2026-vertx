@@ -20,6 +20,7 @@ services:
 
   api01:
     image: dmorais15/rinha-backend-2026-vertx:1.0
+    pull_policy: always
     container_name: api01
     hostname: api01
     networks:
@@ -33,6 +34,7 @@ services:
 
   api02:
     image: dmorais15/rinha-backend-2026-vertx:1.0
+    pull_policy: always
     container_name: api02
     hostname: api02
     networks:
