@@ -36,7 +36,7 @@ public final class MainHandler {
   public void fraudScore(RoutingContext ctx) {
     FraudRequest request = FraudRequest.parse(ctx.body().asJsonObject());
 
-    short[] queryVector = vectorize(request);
+    float[] queryVector = vectorize(request);
 
     int fraudScore = knnSearch.search(queryVector);
 

@@ -7,17 +7,15 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-import static rinha.backend.Constants.SHORT_SCALE;
-
 public final class ReferenceDataset {
 
   private static final int DIMENSIONS = 14;
-
-  private static final int SHORT_SIZE = 2;
+  private static final int FLOAT_SIZE = 4;
   private static final int LABEL_SIZE = 1;
+  private static final int JUMP_SIZE = 3;
 
-  private static final int RECORD_SIZE =
-    DIMENSIONS * SHORT_SIZE + LABEL_SIZE;
+  // 14 floats (56 bytes) + 1 byte de label = 57 bytes
+  private static final int RECORD_SIZE = DIMENSIONS * FLOAT_SIZE + LABEL_SIZE + JUMP_SIZE;
 
   private static final String FILE_PATH = "references.bin";
 
@@ -25,12 +23,7 @@ public final class ReferenceDataset {
   private final int size;
 
   public ReferenceDataset() {
-    try (
-      FileChannel channel = FileChannel.open(
-        Path.of(FILE_PATH),
-        StandardOpenOption.READ
-      )
-    ) {
+    try (FileChannel channel = FileChannel.open(Path.of(FILE_PATH), StandardOpenOption.READ)) {
 
       long fileSize = channel.size();
 
@@ -43,7 +36,6 @@ public final class ReferenceDataset {
       );
 
       this.buffer.order(ByteOrder.BIG_ENDIAN);
-
     } catch (IOException e) {
       System.exit(-1);
       throw new RuntimeException(e);
@@ -55,27 +47,13 @@ public final class ReferenceDataset {
   }
 
   public float get(int recordIndex, int dimension) {
-    final int offset =
-      recordIndex * RECORD_SIZE +
-        dimension * SHORT_SIZE;
-
-    return buffer.getShort(offset) / SHORT_SCALE;
-  }
-
-  public short getQuantized(int recordIndex, int dimension) {
-    final int offset =
-      recordIndex * RECORD_SIZE +
-        dimension * SHORT_SIZE;
-
-    return buffer.getShort(offset);
+    int offset = recordIndex * RECORD_SIZE + dimension * FLOAT_SIZE;
+    return buffer.getFloat(offset);
   }
 
   // 0 = legit, 1 = fraud
   public byte label(int recordIndex) {
-    final int offset =
-      recordIndex * RECORD_SIZE +
-        DIMENSIONS * SHORT_SIZE;
-
+    int offset = recordIndex * RECORD_SIZE + DIMENSIONS * FLOAT_SIZE;
     return buffer.get(offset);
   }
 }
