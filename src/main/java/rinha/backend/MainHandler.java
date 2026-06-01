@@ -44,7 +44,7 @@ public final class MainHandler {
 
     JsonObject response = new JsonObject()
       .put("approved", approved)
-      .put("fraud_score", (float) fraudScore);
+      .put("fraud_score", (float) fraudScore / 5f);
 
     ctx.response()
       .putHeader("content-type", "application/json")

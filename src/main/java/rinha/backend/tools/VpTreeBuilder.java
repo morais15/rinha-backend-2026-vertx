@@ -14,7 +14,6 @@ public final class VpTreeBuilder {
   private final ReferenceDataset dataset;
 
   private int[] pointIndex;
-  private float[] distances;
 
   private int[] nodePointIndex;
   private float[] nodeRadius;
@@ -24,6 +23,7 @@ public final class VpTreeBuilder {
   private int nodeCount;
 
   private float[] vectors;
+  private float[] tempDistances;
 
   private static final int DIMENSIONS = 14;
 
@@ -50,7 +50,7 @@ public final class VpTreeBuilder {
     }
 
     pointIndex = new int[n];
-    distances = new float[n];
+    tempDistances = new float[n];
 
     for (int i = 0; i < n; i++) {
       pointIndex[i] = i;
@@ -72,37 +72,65 @@ public final class VpTreeBuilder {
   private int build(int from, int to) {
     final int count = to - from;
 
-    if (count <= 0) {
-      return -1;
-    }
+    if (count <= 0) return -1;
 
     final int node = nodeCount++;
-    final int vp = pointIndex[from];
 
+    int randomPos =
+      from + java.util.concurrent.ThreadLocalRandom.current().nextInt(count);
+
+    swap(from, randomPos);
+
+    final int vp = pointIndex[from];
     nodePointIndex[node] = vp;
 
     if (count == 1) {
+      nodeRadius[node] = 0f;
       return node;
     }
 
     final int start = from + 1;
 
     for (int i = start; i < to; i++) {
-      distances[i] = distance(vp, pointIndex[i]);
+      tempDistances[i] = distance(vp, pointIndex[i]);
     }
 
-    final int median = from + 1 + ((to - from - 1) >>> 1);
+    int medianIndex = start + ((count - 1) >>> 1);
 
-    quickSelect(start, to - 1, median);
+    quickSelect(start, to - 1, medianIndex);
 
-    final float radius = distances[median];
+    float radius = tempDistances[medianIndex];
     nodeRadius[node] = radius;
 
     int split = start;
 
     for (int i = start; i < to; i++) {
-      if (distances[i] < radius) {
+      if (tempDistances[i] < radius) {
         swap(i, split++);
+      }
+    }
+
+    for (int i = start; i < split; i++) {
+
+      float d = distance(vp, pointIndex[i]);
+
+      if (d >= radius) {
+        throw new RuntimeException(
+          "ERRO LEFT d=" + d +
+            " radius=" + radius
+        );
+      }
+    }
+
+    for (int i = split; i < to; i++) {
+
+      float d = distance(vp, pointIndex[i]);
+
+      if (d < radius) {
+        throw new RuntimeException(
+          "ERRO RIGHT d=" + d +
+            " radius=" + radius
+        );
       }
     }
 
@@ -119,20 +147,18 @@ public final class VpTreeBuilder {
     float sum = 0f;
 
     for (int d = 0; d < DIMENSIONS; d++) {
-      final float diff = vectors[baseA + d] - vectors[baseB + d];
+      float diff = vectors[baseA + d] - vectors[baseB + d];
       sum += diff * diff;
     }
 
-    return (float) Math.sqrt(sum);
+    return sum;
   }
 
   private void quickSelect(int left, int right, int k) {
     while (left < right) {
-      final int pivot = partition(left, right);
+      int pivot = partition(left, right);
 
-      if (pivot == k) {
-        return;
-      }
+      if (pivot == k) return;
 
       if (k < pivot) {
         right = pivot - 1;
@@ -143,40 +169,35 @@ public final class VpTreeBuilder {
   }
 
   private int partition(int left, int right) {
-    final float pivotValue = distances[right];
+    float pivotValue = tempDistances[right];
     int store = left;
 
     for (int i = left; i < right; i++) {
-      if (distances[i] < pivotValue) {
+      if (tempDistances[i] < pivotValue) {
         swap(i, store++);
       }
     }
 
     swap(store, right);
-
     return store;
   }
 
   private void swap(int i, int j) {
-    if (i == j) {
-      return;
-    }
+    if (i == j) return;
 
-    final float distanceTmp = distances[i];
-    distances[i] = distances[j];
-    distances[j] = distanceTmp;
+    float dTmp = tempDistances[i];
+    tempDistances[i] = tempDistances[j];
+    tempDistances[j] = dTmp;
 
-    final int pointTmp = pointIndex[i];
+    int pTmp = pointIndex[i];
     pointIndex[i] = pointIndex[j];
-    pointIndex[j] = pointTmp;
+    pointIndex[j] = pTmp;
   }
 
   private void write(Path output) throws IOException {
-    try (
-      DataOutputStream out = new DataOutputStream(
-        new BufferedOutputStream(Files.newOutputStream(output), 1 << 20)
-      )
-    ) {
+    try (DataOutputStream out = new DataOutputStream(
+      new BufferedOutputStream(Files.newOutputStream(output), 1 << 20))) {
+
       for (int i = 0; i < nodeCount; i++) {
         out.writeInt(nodePointIndex[i]);
         out.writeFloat(nodeRadius[i]);

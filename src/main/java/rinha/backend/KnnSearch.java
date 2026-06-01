@@ -6,117 +6,141 @@ public final class KnnSearch {
 
   private static final int K = 5;
   private static final int DIMENSIONS = 14;
-  private static final float INFINITY = Float.POSITIVE_INFINITY;
-  private static final float MAX_VALUE = Float.MAX_VALUE;
+  private static final float INF = Float.POSITIVE_INFINITY;
 
   private final ReferenceDataset dataset;
   private final VpTree tree = new VpTree();
 
-  private final ThreadLocal<float[]> bestDistancesLocal =
+  private final ThreadLocal<float[]> bestDistLocal =
     ThreadLocal.withInitial(() -> new float[K]);
 
-  private final ThreadLocal<byte[]> bestLabelsLocal =
+  private final ThreadLocal<byte[]> bestLabelLocal =
     ThreadLocal.withInitial(() -> new byte[K]);
 
   public KnnSearch(ReferenceDataset dataset) {
     this.dataset = dataset;
   }
 
+  public int bruteForce(float[] query) {
+
+    float[] bestDist = new float[K];
+    byte[] bestLabel = new byte[K];
+
+    Arrays.fill(bestDist, INF);
+
+    for (int i = 0; i < dataset.size(); i++) {
+      float dist = distance(query, i);
+      insert(dist, dataset.label(i), bestDist, bestLabel);
+    }
+
+    System.out.println("brute");
+
+    for (int i = 0; i < K; i++) {
+      System.out.println(
+        i +
+          " dist=" + bestDist[i] +
+          " label=" + bestLabel[i]
+      );
+    }
+
+    return bestLabel[0]
+      + bestLabel[1]
+      + bestLabel[2]
+      + bestLabel[3]
+      + bestLabel[4];
+  }
+
   public int search(float[] query) {
-    final float[] bestDistances = bestDistancesLocal.get();
-    final byte[] bestLabels = bestLabelsLocal.get();
 
-    Arrays.fill(bestDistances, MAX_VALUE);
-    Arrays.fill(bestLabels, (byte) 0);
+    float[] bestDist = bestDistLocal.get();
+    byte[] bestLabel = bestLabelLocal.get();
 
-    searchNode(0, query, bestDistances, bestLabels);
+    Arrays.fill(bestDist, INF);
+    Arrays.fill(bestLabel, (byte) 0);
 
-    return bestLabels[0]
-      + bestLabels[1]
-      + bestLabels[2]
-      + bestLabels[3]
-      + bestLabels[4];
+    searchNode(0, query, bestDist, bestLabel);
+
+    System.out.println("VP");
+
+    for (int i = 0; i < K; i++) {
+      System.out.println(
+        i +
+          " dist=" + bestDist[i] +
+          " label=" + bestLabel[i]
+      );
+    }
+
+    return bestLabel[0] + bestLabel[1] + bestLabel[2] + bestLabel[3] + bestLabel[4];
   }
 
   private void searchNode(
     int node,
     float[] query,
-    float[] bestDistances,
-    byte[] bestLabels
+    float[] bestDist,
+    byte[] bestLabel
   ) {
-    if (node == -1) {
-      return;
-    }
 
-    final int pointIndex = tree.pointIndex(node);
-    final float distance = distance(query, pointIndex);
+    if (node == -1) return;
 
-    updateBest(
-      distance,
-      dataset.label(pointIndex),
-      bestDistances,
-      bestLabels
-    );
+    int idx = tree.pointIndex(node);
 
-    final float radius = tree.radius(node);
-    final int left = tree.left(node);
-    final int right = tree.right(node);
+    float dist = distance(query, idx);
 
-    if (distance < radius) {
-      searchNode(left, query, bestDistances, bestLabels);
+    insert(dist, dataset.label(idx), bestDist, bestLabel);
 
-      final float tau =
-        bestDistances[K - 1] == MAX_VALUE
-          ? INFINITY
-          : bestDistances[K - 1];
+    float radius = tree.radius(node);
+    int left = tree.left(node);
+    int right = tree.right(node);
 
-      if (distance + tau >= radius) {
-        searchNode(right, query, bestDistances, bestLabels);
+    float tau = bestDist[K - 1];
+
+    if (dist < radius) {
+
+      searchNode(left, query, bestDist, bestLabel);
+
+      if (dist + tau >= radius) {
+        searchNode(right, query, bestDist, bestLabel);
       }
+
     } else {
-      searchNode(right, query, bestDistances, bestLabels);
 
-      final float tau =
-        bestDistances[K - 1] == MAX_VALUE
-          ? INFINITY
-          : bestDistances[K - 1];
+      searchNode(right, query, bestDist, bestLabel);
 
-      if (distance - tau < radius) {
-        searchNode(left, query, bestDistances, bestLabels);
+      if (dist - tau < radius) {
+        searchNode(left, query, bestDist, bestLabel);
       }
     }
   }
 
-  private float distance(float[] query, int recordIndex) {
+  private float distance(float[] query, int idx) {
     float sum = 0f;
 
     for (int d = 0; d < DIMENSIONS; d++) {
-      final float diff = query[d] - dataset.get(recordIndex, d);
+      float diff = query[d] - dataset.get(idx, d);
       sum += diff * diff;
     }
 
-    return (float) Math.sqrt(sum);
+    return sum;
   }
 
-  private void updateBest(
-    float distance,
+  private void insert(
+    float dist,
     byte label,
-    float[] bestDistances,
-    byte[] bestLabels
+    float[] bestDist,
+    byte[] bestLabel
   ) {
-    if (distance >= bestDistances[K - 1]) {
-      return;
+
+    if (dist >= bestDist[K - 1]) return;
+
+    int i = K - 1;
+
+    while (i > 0 && dist < bestDist[i - 1]) {
+      bestDist[i] = bestDist[i - 1];
+      bestLabel[i] = bestLabel[i - 1];
+      i--;
     }
 
-    int pos = K - 1;
-
-    while (pos > 0 && distance < bestDistances[pos - 1]) {
-      bestDistances[pos] = bestDistances[pos - 1];
-      bestLabels[pos] = bestLabels[pos - 1];
-      pos--;
-    }
-
-    bestDistances[pos] = distance;
-    bestLabels[pos] = label;
+    bestDist[i] = dist;
+    bestLabel[i] = label;
   }
 }
